@@ -2,22 +2,23 @@ import discord
 import subprocess
 from dotenv import load_dotenv
 import os
-import time
-import asyncio
 import threading
 import subprocess
 from apscheduler.schedulers.background import BackgroundScheduler
 from discord.ext import tasks
-
+from discord.ext import commands
+import asyncio
 intents = discord.Intents.default()
 intents.members = True 
+intents.message_content=True
 
 sched = BackgroundScheduler()
 sched.start()
 load_dotenv()
 TOKEN=os.getenv('DISCORD_TOKEN')
 GUILD=os.getenv('GUILD')
-
+CHANNEL=int(os.getenv('CHANNEL'))
+client=commands.Bot(command_prefix="track",intents=intents)
 print("""
 
  (                                                                                                                     
@@ -31,7 +32,6 @@ print("""
                                                                                                                        
 
 """)
-client = discord.Client(intents=intents)
 
 @client.event
 async def on_ready():
@@ -40,8 +40,8 @@ async def on_ready():
     )
     print(client.guilds)
     print("<--Ignore all the debug info below! You can now background the process-->")	
-    user=client.get_user(int(os.getenv('ME')))
-    await user.send('Hello! Script is Running!')
+    channel=client.get_channel(CHANNEL)
+    await channel.send('Hello! Script is Running!')
     in_sec=int(os.getenv('DELAY'))*60*60                        
     print(in_sec)
     out.start()
@@ -49,83 +49,69 @@ async def on_ready():
     chec2=sched.add_job(takeover,'interval',seconds= in_sec)
 
 @client.event
-async def on_message(message):
-    if(message.author == client.user):      #Ignore messages by bot itself
-	    return
+async def on_message(message:discord.Message):
+    if message.author == client.user or message.author.bot:      #Ignore messages by bot itself
+        return
+    await client.process_commands(message)
+    
+@client.group(name='add')
+async def add(ctx:commands.Context):
+    if ctx.invoked_subcommand is None:
+        return await ctx.send("Please use either `track add domain` or `track add command`")
+@add.command(name='domain')
+async def add_domain(ctx:commands.Context,*,domain:str):
+    domain_file=open("./tmp/domains_list","a+")
+    domain_file.write(domain+'\n')
+    await ctx.send("Domain added!")
+    domain_file.close()
+@add.command(name='command')
+async def add_command(ctx:commands.Context,*,command:str):
+    command_file=open("./tmp/commands_list","a+")
+    command_file.write(command+'\n')
+    await ctx.send("Added!")
+    command_file.close()			  
 
-    prefix="track"
-    if(message.author==client.get_user(int(os.getenv('ME')))):
-        words=message.content.split(' ')
-        if(words[0].lower() == prefix ):
-            if(words[1].lower() == "add"):
-                if(words[2].lower() == "domain"):
-                    print("OK")
-                    dom=words[3]
-                    domain_file=open("./tmp/domains_list","a+")
-                    domain_file.write(dom+'\n')			     
-                    await message.author.send("Added!")
-                    domain_file.close()
-                elif(words[2].lower() == "command"):
-                    a=' '
-                    com=a.join(words[3:])
-                    command_file=open("./tmp/commands_list","a+")
-                    command_file.write(com+'\n')
-                    await message.author.send("Added!")
-                    command_file.close()
-            if(words[1].lower() == "rm"):
-                fl=False
-                if(words[2].lower() == "domain"):
-                    rem=words[3].lower()
-                    domain_file=open("./tmp/domains_list","r")
-                    lines=domain_file.readlines()
-                    domain_file=open("./tmp/domains_list","w")
-                    for line in lines:
-                        if(line.strip('\n')==rem):
-                            fl=True
-                            continue
-                        else:
-                            domain_file.write(line)
-                    if(fl):
-                        await message.author.send("Removed!")
-                        fl=False
-                    else:
-                        await message.author.send("Not Found")
-                    domain_file.close()
-                if(words[2].lower() == "command"):
-                    a=' '
-                    rem=a.join(words[3:])
-                    command_file=open("./tmp/commands_list","r")
-                    lines=command_file.readlines()
-                    command_file=open("./tmp/commands_list","w")
-                    for line in lines:
-                        if(line.strip('\n')==rem):
-                            fl=True
-                            continue
-                        else:
-                            command_file.write(line)
-                    if(fl):
-                        await message.author.send("Removed!")
-                        fl=False
-                    else:
-                        await message.author.send("Not Found")
-                    command_file.close()
+@client.group(name='rm',aliases=['remove'])
+async def remove(ctx:commands.Context):
+    if ctx.invoked_subcommand is None:
+        return await ctx.send("Please use either `track rm domain` or `track rm command`")
+@remove.command(name='domain')
+async def remove_domain(ctx:commands.Context,*,domain:str):
+    with open("./tmp/domains_list","r+") as file:
+        lines=file.readlines()
+        if (domain+"\n") in lines:
+            lines.remove(domain+"\n")
+            file.truncate()
+            file.writelines(lines)
+        else:
+            return await ctx.send(f"Could not find {domain} in the list of domains!")
+@remove.commnad(name='command')
+async def remove_command(ctx:commands.Context,*,command:str):
+    with open("./tmp/commands_list","r+") as file:
+        lines=file.readlines()
+        if (command+"\n") in lines:
+            lines.remove(command+"\n")
+            file.truncate()
+            file.writelines(lines)
+        else:
+            return await ctx.send(f"Could not find {command} in the list of commands!")
+        
+        
 
 @tasks.loop(hours=12)
 async def out():  
     print("Inside out1")                  
     data=check("new")
     if(data):
-        user=client.get_user(int(os.getenv('ME')))
-        await user.send("New Subdomain/s Found")
-        for l in data:
-            await user.send(l.strip())         
+        channel=client.get_channel(CHANNEL)
+        await channel.send("New Subdomain/s Found")
+        await channel.send(f"{'\n'.join([l.strip() for l in data])}")
     print("Inside out2")
     data=check("to")
     if(data):
-        user=client.get_user(int(os.getenv('ME')))
-        await user.send("Subdomain Takeover Vulnerable Domain Found")
-        for l in data:
-            await user.send(l.strip())  
+        channel=client.get_channel(CHANNEL)
+        await channel.send("Subdomain Takeover Vulnerable Domain Found")
+        await channel.send(f"{'\n'.join([l.strip() for l in data])}") 
 
 def execute():
     print("Inside execute")
@@ -203,4 +189,4 @@ def takeover():
         subprocess.Popen("subjack -w ./tmp/"+b+"_sub.txt >> ./tmp/takover",shell=True)
     dom.close()
            
-client.run(TOKEN)
+asyncio.run(client.start(TOKEN))
