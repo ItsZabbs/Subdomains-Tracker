@@ -17,44 +17,28 @@ sched.start()
 load_dotenv()
 TOKEN=os.getenv('DISCORD_TOKEN')
 GUILD=os.getenv('GUILD')
-CHANNEL=int(os.getenv('CHANNEL'))
-client=commands.Bot(command_prefix="track",intents=intents)
-print("""
-
- (                                                                                                                     
- )\ )             )    (                                                 *   )                         )               
-(()/(     (    ( /(    )\ )            )        )   (                  ` )  /(   (        )         ( /(     (    (    
- /(_))   ))\   )\())  (()/(    (      (      ( /(   )\    (      (      ( )(_))  )(    ( /(    (    )\())   ))\   )(   
-(_))    /((_) ((_)\    ((_))   )\     )\  '  )(_)) ((_)   )\ )   )\    (_(_())  (()\   )(_))   )\  ((_)\   /((_) (()\  
-/ __|  (_))(  | |(_)   _| |   ((_)  _((_))  ((_)_   (_)  _(_/(  ((_)   |_   _|   ((_) ((_)_   ((_) | |(_) (_))    ((_) 
-\__ \  | || | | '_ \ / _` |  / _ \ | '  \() / _` |  | | | ' \)) (_-<     | |    | '_| / _` | / _|  | / /  / -_)  | '_| 
-|___/   \_,_| |_.__/ \__,_|  \___/ |_|_|_|  \__,_|  |_| |_||_|  /__/     |_|    |_|   \__,_| \__|  |_\_\  \___|  |_|   
-                                                                                                                       
-
-""")
+client=commands.Bot(command_prefix="track",intents=intents,strip_after_prefix=True,owner_id=int(os.getenv("ME")))
+discord.utils.setup_logging()
 
 @client.event
 async def on_ready():
-    print(
-        f'Logged in as {client.user}\n'        
-    )
-    print(client.guilds)
-    print("<--Ignore all the debug info below! You can now background the process-->")	
-    channel=client.get_channel(CHANNEL)
-    await channel.send('Hello! Script is Running!')
+    global CHANNEL
+    CHANNEL=int(os.getenv('CHANNEL'))
+    CHANNEL=await client.fetch_channel(CHANNEL)
+    await CHANNEL.send('Hello! Script is Running!')
     in_sec=int(os.getenv('DELAY'))*60*60                        
     print(in_sec)
     out.start()
     chec=sched.add_job(execute,'interval', seconds = in_sec)        
     chec2=sched.add_job(takeover,'interval',seconds= in_sec)
-
+    await client.load_extension("jishaku")
 @client.event
 async def on_message(message:discord.Message):
     if message.author == client.user or message.author.bot:      #Ignore messages by bot itself
         return
     await client.process_commands(message)
     
-@client.group(name='add')
+@client.group(name='add',help='Add a domain or command to the list')
 async def add(ctx:commands.Context):
     if ctx.invoked_subcommand is None:
         return await ctx.send("Please use either `track add domain` or `track add command`")
@@ -71,7 +55,7 @@ async def add_command(ctx:commands.Context,*,command:str):
     await ctx.send("Added!")
     command_file.close()			  
 
-@client.group(name='rm',aliases=['remove'])
+@client.group(name='rm',aliases=['remove'],help='Remove a command or domain from the list')
 async def remove(ctx:commands.Context):
     if ctx.invoked_subcommand is None:
         return await ctx.send("Please use either `track rm domain` or `track rm command`")
@@ -85,7 +69,7 @@ async def remove_domain(ctx:commands.Context,*,domain:str):
             file.writelines(lines)
         else:
             return await ctx.send(f"Could not find {domain} in the list of domains!")
-@remove.commnad(name='command')
+@remove.command(name='command')
 async def remove_command(ctx:commands.Context,*,command:str):
     with open("./tmp/commands_list","r+") as file:
         lines=file.readlines()
@@ -103,15 +87,13 @@ async def out():
     print("Inside out1")                  
     data=check("new")
     if(data):
-        channel=client.get_channel(CHANNEL)
-        await channel.send("New Subdomain/s Found")
-        await channel.send(f"{'\n'.join([l.strip() for l in data])}")
+        await CHANNEL.send("New Subdomain/s Found")
+        await CHANNEL.send('\n'.join([l.strip() for l in data]))
     print("Inside out2")
     data=check("to")
     if(data):
-        channel=client.get_channel(CHANNEL)
-        await channel.send("Subdomain Takeover Vulnerable Domain Found")
-        await channel.send(f"{'\n'.join([l.strip() for l in data])}") 
+        await CHANNEL.send("Subdomain Takeover Vulnerable Domain Found")
+        await CHANNEL.send('\n'.join([l.strip() for l in data])) 
 
 def execute():
     print("Inside execute")
